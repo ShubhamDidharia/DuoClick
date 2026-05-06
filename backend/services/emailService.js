@@ -80,7 +80,7 @@ async function sendMailSafe({ to, subject, text }) {
 async function generatePersonalizedWelcomeMessage(user) {
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 
     const prompt = `Generate a short, encouraging welcome message (approximately 100 words) for a language learning platform user with the following profile:
     
