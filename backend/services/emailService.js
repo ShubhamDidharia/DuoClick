@@ -69,7 +69,14 @@ async function sendMailSafe({ to, subject, text }) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')}</pre></body></html>`
 
-  await sendEmailViaBrevo(to, subject, htmlContent)
+  try {
+    const result = await sendEmailViaBrevo(to, subject, htmlContent)
+    if (!result.success) {
+      console.error('[email] Failed to send email to', to, ':', result.error)
+    }
+  } catch (error) {
+    console.error('[email] Unexpected error in sendMailSafe:', error.message || error)
+  }
 }
 
 /**
