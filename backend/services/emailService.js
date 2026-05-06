@@ -1,56 +1,43 @@
-import { createRequire } from 'module'
+import nodemailer from 'nodemailer'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const require = createRequire(import.meta.url)
-const SibApiV3Sdk = require('@getbrevo/brevo')
+const smtpConfigured =
+  process.env.SMTP_HOST &&
+  process.env.SMTP_PORT &&
+  process.env.SMTP_USER &&
+  process.env.SMTP_PASS &&
+  process.env.SMTP_FROM
 
-const brevoConfigured =
-  process.env.BREVO_API_KEY && process.env.SENDER_EMAIL
+let transporter = null
 
-// Verify Brevo is configured on startup
-if (brevoConfigured) {
-  console.log('[email] Brevo email service configured successfully')
+if (smtpConfigured) {
+  const smtpPort = Number(process.env.SMTP_PORT)
+  // Port 465 uses implicit TLS (secure), port 587 uses STARTTLS
+  const smtpSecure = smtpPort === 465
+
+  transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: smtpPort,
+    secure: smtpSecure,
+    requireTLS: true,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  })
+
+  transporter
+    .verify()
+    .then(() => {
+      console.log('[email] SMTP transporter verified successfully')
+    })
+    .catch((error) => {
+      console.warn('[email] SMTP transporter verification failed', {
+        error: error.message,
+      })
+    })
 } else {
-  console.warn('[email] Brevo not fully configured. Missing BREVO_API_KEY or SENDER_EMAIL')
-}
-
-/**
- * Send email using Brevo API
- * @param {string} userEmail - Recipient email address
- * @param {string} subject - Email subject
- * @param {string} htmlContent - HTML content for the email
- * @returns {Promise<Object>} - Result object with success status
- */
-async function sendEmailViaBrevo(userEmail, subject, htmlContent) {
-  if (!brevoConfigured) {
-    console.warn('[email] Brevo not configured. Skipping email:', { userEmail, subject })
-    return { success: false, error: 'Brevo not configured' }
-  }
-
-  try {
-    let apiInstance = new SibApiV3Sdk.TransactionalEmailsApi()
-
-    // Authenticate with API Key
-    let apiKey = apiInstance.authentications['apiKey']
-    apiKey.apiKey = process.env.BREVO_API_KEY
-
-    let sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail()
-
-    sendSmtpEmail.subject = subject
-    sendSmtpEmail.htmlContent = htmlContent
-    sendSmtpEmail.sender = {
-      name: 'DuoClick',
-      email: process.env.SENDER_EMAIL,
-    }
-    sendSmtpEmail.to = [{ email: userEmail }]
-
-    const data = await apiInstance.sendTransacEmail(sendSmtpEmail)
-    console.log(`[email] Email sent successfully to ${userEmail}. Message ID: ${data.messageId}`)
-    return { success: true, messageId: data.messageId }
-  } catch (error) {
-    console.error(`[email] Brevo error sending to ${userEmail}:`, error.message || error)
-    return { success: false, error }
-  }
+  console.warn('[email] SMTP not fully configured. Missing SMTP configuration.')
 }
 
 async function sendMailSafe({ to, subject, text }) {
@@ -58,24 +45,21 @@ async function sendMailSafe({ to, subject, text }) {
     return
   }
 
-  if (!brevoConfigured) {
-    console.warn('[email] Brevo not configured. Skipping email:', { to, subject })
+  if (!transporter) {
+    console.warn('[email] SMTP not configured. Skipping email:', { to, subject })
     return
   }
 
-  // Convert plain text to HTML
-  const htmlContent = `<html><body><pre style="font-family: Arial, sans-serif; white-space: pre-wrap; word-wrap: break-word;">${text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')}</pre></body></html>`
-
   try {
-    const result = await sendEmailViaBrevo(to, subject, htmlContent)
-    if (!result.success) {
-      console.error('[email] Failed to send email to', to, ':', result.error)
-    }
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM,
+      to,
+      subject,
+      text,
+    })
+    console.log(`[email] Email sent successfully to ${to}`)
   } catch (error) {
-    console.error('[email] Unexpected error in sendMailSafe:', error.message || error)
+    console.error('[email] Error sending email to', to, ':', error.message)
   }
 }
 
@@ -228,5 +212,5 @@ export {
   sendMailSafe,
   sendAIPersonalizedWelcomeEmail,
   sendDailyWordEmail,
-  sendEmailViaBrevo,
+  transporter,
 }
